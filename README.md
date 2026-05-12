@@ -2,6 +2,12 @@
 
 `[maplechardata.py](maplechardata.py)` pulls NA MapleStory ranking data from Nexon’s public API, merges into daily/weekly/monthly CSVs, and syncs with Cloudflare R2.
 
+[![group 1](https://github.com/Fayiette/Maplestory-Update/actions/workflows/maplechardata-fetch-01.yml/badge.svg)](https://github.com/Fayiette/Maplestory-Update/actions/workflows/maplechardata-fetch-01.yml)
+[![group 2](https://github.com/Fayiette/Maplestory-Update/actions/workflows/maplechardata-fetch-02.yml/badge.svg)](https://github.com/Fayiette/Maplestory-Update/actions/workflows/maplechardata-fetch-02.yml)
+[![group 3](https://github.com/Fayiette/Maplestory-Update/actions/workflows/maplechardata-fetch-03.yml/badge.svg)](https://github.com/Fayiette/Maplestory-Update/actions/workflows/maplechardata-fetch-03.yml)
+[![group 3](https://github.com/Fayiette/Maplestory-Update/actions/workflows/maplechardata-fetch-04.yml/badge.svg)](https://github.com/Fayiette/Maplestory-Update/actions/workflows/maplechardata-fetch-04.yml)
+[![group 3](https://github.com/Fayiette/Maplestory-Update/actions/workflows/maplechardata-fetch-05.yml/badge.svg)](https://github.com/Fayiette/Maplestory-Update/actions/workflows/maplechardata-fetch-05.yml)
+
 ## Behaviour
 
 1. **R2 download** — The daily CSV object (`R2_UPLOAD_DAILY_NAME`) **must** exist in the bucket. If the download fails (missing object or network/auth error), the process exits with code 1. Weekly and monthly objects are optional; if missing, aggregates are rebuilt from daily data when possible.
