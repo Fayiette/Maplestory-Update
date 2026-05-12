@@ -1,119 +1,61 @@
-# Stream — Steam activity sync
+# MapleStory automation (GitHub Actions)
 
-A small **personal activity log** for Steam: it pulls your **recently played** data via the **Steam Web API**, enriches titles with **store metadata** (genres, categories, free/paid) into a local cache, appends **playtime deltas** to a CSV, and keeps the artifacts in **Cloudflare R2** (download first, upload only when content changes). Optional **Discord** notifications run on success or failure. **GitHub Actions** runs on a schedule so each job starts from a clean checkout and restores state from R2.
+`[maplechardata.py](maplechardata.py)` pulls NA MapleStory ranking data from Nexon’s public API, merges into daily/weekly/monthly CSVs, and syncs with Cloudflare R2.
 
-Workflow: [.github/workflows/steam-fetch.yml](.github/workflows/steam-fetch.yml)
+## Behaviour
 
----
+1. **R2 download** — The daily CSV object (`R2_UPLOAD_DAILY_NAME`) **must** exist in the bucket. If the download fails (missing object or network/auth error), the process exits with code 1. Weekly and monthly objects are optional; if missing, aggregates are rebuilt from daily data when possible.
+2. **Fetch** — Values listed in `MY_CHARACTERS` are queried with a short delay between each request to reduce timeouts.
+3. **Upload** — Daily row merge, dedupe, weekly/monthly aggregates, then upload CSVs back to R2.
 
-## What it does
+## Logs (public CI vs private Discord)
 
-| Piece | Role |
-| ----- | ---- |
-| **Activity CSV** | Rows keyed by day and game: playtime gained since last snapshot, genres, categories, timestamps. |
-| **Genre cache** | JSON map of app id → metadata from the Steam store API (reduces repeat calls). |
-| **R2** | Canonical storage for both files; object keys match the configured **filenames** (flat keys). |
-| **Discord** | Optional webhook for run summaries; uncaught failures send **detailed** text to Discord while **stdout** stays generic (useful when Action logs are public). |
-
-On **GitHub Actions**, the workflow injects configuration from **environment secrets**; locally you use a `.env` file. Artifact **names** are not hardcoded in code—they must be set via environment variables everywhere.
-
----
-
-## Architecture (high level)
-
-```mermaid
-flowchart LR
-  subgraph apis [Steam]
-    WebAPI[Web_API_recent_play]
-    StoreAPI[Store_API_appdetails]
-  end
-  subgraph runner [Runner_or_PC]
-    Py[steam_activity_github.py]
-    CSV[Activity_CSV]
-    Cache[Genre_cache_JSON]
-  end
-  subgraph storage [Storage]
-    R2[(Cloudflare_R2)]
-  end
-  subgraph notify [Optional]
-    DC[Discord_webhook]
-  end
-  WebAPI --> Py
-  StoreAPI --> Py
-  R2 -->|download_baseline| Py
-  Py --> CSV
-  Py --> Cache
-  Py -->|upload_if_changed| R2
-  Py -.-> DC
-```
-
----
-
-## Features
-
-- **Steam Web API** for recently played games (requires a Web API key and your Steam ID).
-- **Store API** lookups for genre/category enrichment, with a **per-app delay** to stay polite.
-- **R2 sync**: pull both artifacts at start; **SHA-256** comparison skips upload when unchanged.
-- **Day bucketing**: runs before **07:00 UTC** are attributed to the **previous calendar day** in the script (see code for exact rule).
-- **Configurable artifact filenames** via environment variables only (required; no built-in defaults).
-
----
-
-## Requirements
-
-- **Python 3.12+** (matches the workflow; slightly older may work if dependencies install.)
-- Dependencies in [`requirements.txt`](requirements.txt): `requests`, `boto3`, `python-dotenv`.
-- Services: **Steam Web API** access, **Cloudflare R2** (S3-compatible endpoint and credentials), optional **Discord** webhook.
-
----
-
-## Local usage
-
-1. Clone or copy this project.
-2. Copy [`.env.example`](.env.example) to `.env` and set **every required variable** (the script exits if artifact names or other required keys are missing or empty).
-3. Install and run:
-
-```bash
-pip install -r requirements.txt
-python steam_activity_github.py
-```
-
-Artifacts are written next to the script (same directory as `steam_activity_github.py`).
-
----
-
-## GitHub Actions
-
-The workflow [`.github/workflows/steam-fetch.yml`](.github/workflows/steam-fetch.yml) uses:
-
-- **`environment: prod`** — define **environment secrets** on `prod` (Settings → Environments → `prod`) using the **same variable names** referenced in the workflow file. Do not commit real values.
-- **Schedule** — every **2 hours** at minute `0` **UTC** (GitHub may delay runs slightly under load), plus **`workflow_dispatch`** for manual runs.
-
-Do **not** paste secrets, API keys, webhook URLs, bucket names, endpoints, Steam IDs, or artifact filenames into issues or the README—use secret storage only.
-
----
+- **GitHub Actions logs** — Progress uses counts and generic phrases only (no values from `MY_CHARACTERS`, no webhook URLs, no R2 credentials).
+- **Discord** — Optional failure detail with capped length. **GitHub logs never include** Discord user IDs, webhooks, subject strings from env, or R2 details. **Discord failure posts** scrub tracebacks/exceptions (query parameters that mirror env subjects, R2 credentials and endpoints, configured object key strings, values from `MY_CHARACTERS`, raw webhook URL) while still allowing an `<@user_id>` **mention prefix** when `DISCORD_USER_ID` is set so you get notified in your private channel.
 
 ## Environment variables
 
-Authoritative names and notes live in [`.env.example`](.env.example). Required entries include Steam API credentials, R2 settings, Discord webhook, and the two artifact filename variables. `DISCORD_USER_ID` is optional (used for failure mentions).
 
----
+| Variable                                                               | Required | Notes                                                                                                                                                                                         |
+| ---------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT` | Yes      | R2 S3-compatible API                                                                                                                                                                          |
+| `R2_UPLOAD_DAILY_NAME`, `R2_UPLOAD_WEEK_NAME`, `R2_UPLOAD_MONTH_NAME`  | Yes      | Non-empty object keys for the three CSVs (no defaults in the script; set in env / secrets).                                                                                                   |
+| `MAPLE_RANKING_API_URL`                                                | Yes      | Ranking HTTP base URL (no default in the script; set from publisher docs).                                                                                                                    |
+| `MAPLE_REBOOT_INDEX`                                                   | No       | Default `0`                                                                                                                                                                                   |
+| `MY_CHARACTERS`                                                        | Yes      | Semicolon or comma separated values for **this** run only                                                                                                                                     |
+| `MY_CHARACTERS_GROUP_1` … `_5`                                         | —        | **Not read by the script** — use in GitHub Environment secrets (see workflows). Optional parallel keys in [.env](.env) for local copy/paste; set `MY_CHARACTERS` to one line to test a batch. |
+| `MAPLE_JOB_LABEL`                                                      | No       | Shown in Discord only (e.g. `1`…`5` for workflow group)                                                                                                                                       |
+| `DISCORD_WEBHOOK_URL`                                                  | No       | Also accepts legacy `DISCORD_WEBHOOK`                                                                                                                                                         |
+| `DISCORD_USER_ID`                                                      | No       | Mention on failure (Discord only)                                                                                                                                                             |
 
-## Third-party services and responsibility
 
-This project uses **Valve’s Steam Web API** and **store endpoints**. You are responsible for complying with [Steam / Valve’s applicable terms](https://steamcommunity.com/dev) and for any data you store in R2 or elsewhere. This software is provided as-is; it is not affiliated with Valve.
+Bootstrap: upload a valid daily CSV (with the header row this script writes) to R2 at the object key you set in `R2_UPLOAD_DAILY_NAME` before the first automated run.
 
----
+## GitHub Actions (five workflows)
 
-## License and credit
+Workflows live under `[.github/workflows/](.github/workflows/)` inside this folder. There are **five** files so you can split your subject list across environment secrets `MY_CHARACTERS_GROUP_1` … `MY_CHARACTERS_GROUP_5` (for example nine subjects per group on the first four jobs and the remainder on the fifth).
 
-This project is licensed under the **GNU Affero General Public License v3.0** — see [`LICENSE`](LICENSE) for the full text. That matches the licensing approach used by **MangaUpdate** in this workspace (strong copyleft, including remote network use).
+- `**environment: prod`** — All secrets should be defined under **Settings → Environments → prod → Environment secrets** so only prod-scoped values are used.
+- **Concurrency** — Every workflow declares `concurrency.group: maplechardata-r2` with `cancel-in-progress: false`, so if another Maple workflow is running, the new run **waits** instead of overlapping R2 merges.
+- **Cron** — Each file runs **once per day**, **one hour apart** (07:00–11:00 UTC by default: `0 7`, `0 8`, `0 9`, `0 10`, `0 11`). Adjust to your timezone and preference. Concurrency still queues overlapping runs on the shared R2 lock.
 
-- **Sharing** is allowed under the license terms.
-- **Attribution / license notices** must be preserved as required by the license (including interactive use where applicable).
+Install in CI from repo root:
 
----
+```bash
+pip install -r Maplestory/requirements.txt
+python Maplestory/maplechardata.py
+```
 
-## Contributing and forks
+## Local run
 
-Pull requests may be disabled on your upstream; forks are welcome. Preserve copyright and license notices in any distribution you make.
+```bash
+cd Maplestory
+pip install -r requirements.txt
+cp .env.example .env   # if you do not already have .env
+# Edit .env: add R2_* and DISCORD_WEBHOOK_URL (see table above). .env is gitignored.
+python maplechardata.py
+```
+
+## License
+
+See [LICENSE](LICENSE) (GNU AGPL-3.0).
