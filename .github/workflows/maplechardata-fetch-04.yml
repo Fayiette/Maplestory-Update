@@ -2,7 +2,7 @@ name: group 4
 
 on:
   schedule:
-    - cron: '0 10,0 * * *'   # 10:00 & 00:00 UTC daily
+    - cron: '0 10,16 * * *'   # 10:00 & 16:00 UTC daily
   workflow_dispatch:
 
 concurrency:
