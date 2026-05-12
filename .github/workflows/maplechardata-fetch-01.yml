@@ -28,13 +28,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('Maplestory/requirements.txt') }}
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
           restore-keys: ${{ runner.os }}-pip-
 
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -r Maplestory/requirements.txt
+          pip install -r requirements.txt
 
       - name: Run MapleStory data script
         env:
@@ -51,7 +51,7 @@ jobs:
           MAPLE_REBOOT_INDEX: ${{ secrets.MAPLE_REBOOT_INDEX }}
           MY_CHARACTERS: ${{ secrets.MY_CHARACTERS_GROUP_1 }}
           MAPLE_JOB_LABEL: '1'
-        run: python Maplestory/maplechardata.py
+        run: python maplechardata.py
 
       - name: Error notification
         if: failure()
