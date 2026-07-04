@@ -64,4 +64,4 @@ python maplechardata.py
 
 ## License
 
-See [LICENSE](LICENSE) (GNU AGPL-3.0).
+See [LICENSE](LICENSE) (GNU AGPL-3.0).!
